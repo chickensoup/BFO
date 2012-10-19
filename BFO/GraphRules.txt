@@ -1,0 +1,23 @@
+﻿number of source blocks: int rootnum
+number of total blocks: int blocknum
+possible rates: int rates[]
+possibility of one block have one output: double rateOneOutput
+possibility of one block have two outputs: double rateTwoOutput
+successor search nodes: int succRange
+
+构建规则：
+一个图有rootnum个初始节点，也就是root；总共有blocknum个节点。所有可能的频率都存在int[] rates数组中。
+一个节点有两个后继（successor node）的概率是20%，一个后继的概率是80%。
+一个节点最有有两个前驱节点。
+
+如果i是root，那就在[rootnum, i+succRange]中找
+
+对于编号为i的非root节点，在[i+1, i+succRange]中随机找一个节点k作为其后继。
+if（k==initK && reset == true）
+	i节点的该后继为空
+if （k > i+succRange）
+    k = i + 1, reset = true;
+case1：k没有被设置频率，从rates[]中随机找一个和i的频率不同的值设置为k的频率，k的入度设置为1
+case2：k的入度为1，频率与i不同，将k的频率置为2
+case3：k的入度为1，频率与i相同，考察k+1的点
+case4: k的入度为2，考察k+1的点

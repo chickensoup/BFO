@@ -1,0 +1,13 @@
+﻿//utilization factor: static double uti;
+0.8
+//number of source blocks: static int rootnum = 1;
+2
+//number of total blocks: public static int blocknum = 6;
+10
+//possible rates: static int[] rates = { 1, 2, 4};
+1 2 4
+//possibility of one block have one output: static double rateOneOutput = 0.5;
+0.5
+//successor search nodes: i 
+//static int succRange = rootnum * i;
+2
