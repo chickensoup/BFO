@@ -29,6 +29,31 @@ namespace BFO
         }
     }
 
+    /// <summary>
+    /// 动态优化所需，worseTime记录计算时间，utilization记录utilization factor
+    /// </summary>
+    public class LU
+    {
+        public double worseTime;
+        public double utilization;
+        public int k_index;  //链路尾节点的index
+        public int minT_index;  //链路中周期最短的节点index
+
+        public LU()
+        {
+            worseTime = 0;
+            utilization = 0;
+            k_index = -1;
+            minT_index = -1;
+        }
+
+        public LU(double a, double b)
+        {
+            worseTime = a;
+            utilization = b;
+        }
+    }
+
     public class LS
     {
         public int src;
@@ -375,7 +400,6 @@ namespace BFO
                                 else
                                 {
                                     worseTime = calcSuccResopnseTime(succ[j], currentIndex);
-                                    laxity = this.vexs[succ[j]].pointPeriod - worseTime;
                                     laxity = 1 - worseTime / this.vexs[succ[j]].pointPeriod;
                                     
                                     
@@ -448,6 +472,318 @@ namespace BFO
             else
                 return false;
         }
+
+
+        /// <summary>
+        /// 设置优先级,考虑动态优化过程
+        /// </summary>
+        public void mgraphSetPrio_DynamicOpt()
+        {
+            //Console.WriteLine("Starting priority assignment...");
+
+            int vexnum = this.mgraphVexnum;
+            ArrayList T = new ArrayList(vexnum);      //所有点的集合
+            ArrayList S = new ArrayList(vexnum);      //所有当前可到达的点的集合
+            int[,] arc = new int[vexnum, vexnum];
+            int[,] buf = new int[vexnum, vexnum];
+            bool[] visited = new bool[vexnum];
+            int PRIORITY = 0;
+
+            //initialize
+            for (int i = 0; i < vexnum; i++)
+            {
+                T.Add(this.vexs[i]);
+                visited[i] = false;
+                this.vexs[i].priority = -1;
+
+                for (int j = 0; j < vexnum; j++)
+                {
+                    arc[i, j] = this.arcs[i, j].arcAdj;
+                    buf[i, j] = this.arcs[i, j].arcBuf;
+                }
+            }
+
+
+            //开始priority assignment
+            while (setPrioFinished(visited) == false)
+            {
+                //Console.ReadKey();
+
+                //Console.WriteLine("将所有没有入度的点放入S");
+                //将所有没有入度的点放入S
+                for (int i = 0; i < vexnum; i++)
+                {
+                    //如果已经访问过，跳过
+                    if (visited[i])
+                        continue;
+
+                    //如果已经在S集中则跳过
+                    bool sExist = false;
+                    for (int k = 0; k < S.Count; k++)
+                    {
+                        if (((Point)S[k]).pointID == i)
+                        {
+                            sExist = true;
+                            break;
+                        }
+                    }
+                    if (sExist)
+                        continue;
+
+                    bool candidate = true;
+                    for (int j = 0; j < vexnum; j++)
+                    {
+                        //已经去掉的点，不再考虑边
+                        if (visited[j])
+                            continue;
+
+                        //如果存在连线-1且buf != 2，说明存在入度
+                        if (arc[i, j] == -1 && buf[i, j] != 2)
+                        {
+                            candidate = false;
+                            break;
+                        }
+                    }//end of for
+                    if (candidate == true)
+                        S.Add(this.vexs[i]);
+                }//end of for
+                //Console.WriteLine("S集合中的候选点为：");
+
+
+                //Console.WriteLine("找出S集合中下一个要分配优先级的点。");
+                //找出S集合中的候选点
+                if (S.Count == 1)
+                {
+                    int id = ((Point)S[0]).pointID;
+                    //Console.WriteLine("S集合中只有一个顶点" + (id + 1));
+                    checkAndOpt_Dyn(id);    //检测是否需要动态优化，并进行适当调整
+
+                    this.vexs[id].pointPrio = PRIORITY;
+                    PRIORITY++;
+                    visited[id] = true;
+
+                    ///Console.WriteLine("S集合中只有一个顶点" + (id + 1) + "，分配优先级" + PRIORITY);
+                    S.RemoveAt(0);
+                }
+                else
+                {
+                    //Console.WriteLine("S集合中有" + S.Count + "个顶点");
+
+                    //按照period升序排列，频率最高的排在前面
+                    S.Sort(0, S.Count, new ListCompare());
+
+                    //选择相同周期的前几个点
+                    int currentPeriod = ((Point)S[0]).pointPeriod;
+                    int count = 1;
+
+                    for (int i = 1; i < S.Count; i++)
+                    {
+                        if (((Point)S[i]).pointPeriod == currentPeriod)
+                            count++;
+                    }
+
+                    //只有一个点，检查这个点的laxity是否满足laxity >= u；若不满足，则动态调整
+                    if (count == 1)
+                    {
+                        int id = ((Point)S[0]).pointID;
+                        //Console.WriteLine("S集合中顶点" + (id + 1));
+                        checkAndOpt_Dyn(id);    //检测是否需要动态优化，并进行适当调整
+
+                        this.vexs[id].pointPrio = PRIORITY;
+                        PRIORITY++;
+                        visited[id] = true;
+
+                        //Console.WriteLine("S集合中顶点" + (id + 1) + "，分配优先级" + PRIORITY);
+                        S.RemoveAt(0);
+                    }
+                    //若存在多个点周期相同，就要比较laxity
+                    else
+                    {
+                        double MINLaxity = 0;
+                        int MINIndex = ((Point)S[0]).pointID;
+                        int sIndex = 0;
+                        for (int i = 0; i < count; i++)
+                        {
+                            List<int> succ = new List<int>();
+                            int currentIndex = ((Point)S[i]).pointID;
+
+                            //succ(i)
+                            succ.Add(currentIndex);
+                            for (int j = 0; j < vexnum; j++)
+                            {
+                                if (arc[currentIndex, j] == 1)
+                                    succ.Add(j);
+                            }
+
+                            double minLaxity = 0;
+                            for (int j = 0; j < succ.Count; j++)
+                            {
+                                double worseTime, laxity;
+
+                                if (this.prioAlg == PrioAlg.orig)
+                                {
+                                    worseTime = maxPathCompTime(succ[j]);
+                                    laxity = this.vexs[succ[j]].pointPeriod - worseTime;
+                                }
+                                else
+                                {
+                                    worseTime = calcSuccResopnseTime(succ[j], currentIndex);
+                                    laxity = 1 - worseTime / this.vexs[succ[j]].pointPeriod;
+
+
+                                    //worseTime = maxPathCompTimeAdv(succ[j], this.vexs[succ[j]].pointPeriod);
+                                    //laxity = 1 - worseTime / this.vexs[succ[j]].pointPeriod;
+                                }
+
+
+                                if (j == 0)
+                                    minLaxity = laxity;
+                                else
+                                {
+                                    if (laxity < minLaxity)
+                                        minLaxity = laxity;
+                                }
+                            }
+
+                            if (i == 0)
+                            {
+                                MINIndex = currentIndex;
+                                sIndex = i;
+                                MINLaxity = minLaxity;
+                            }
+                            else
+                            {
+                                if (minLaxity < MINLaxity)
+                                {
+                                    MINLaxity = minLaxity;
+                                    MINIndex = currentIndex;
+                                    sIndex = i;
+                                }
+                            }
+
+                            succ.Clear();
+
+                        }//end of for
+
+                        int id = MINIndex;
+                        checkAndOpt_Dyn(id);
+                        this.vexs[id].pointPrio = PRIORITY;
+                        PRIORITY++;
+                        visited[id] = true;
+
+                        //Console.WriteLine("S集合中顶点" + (id + 1) + "，分配优先级" + PRIORITY);
+                        S.RemoveAt(sIndex);
+                    }//end of else
+                }
+            }
+        }
+
+
+        public LU utilizationCompTime(int index, int tk)
+        {
+            LU lu = new LU();
+            
+            bool noIncoming = true;
+            List<int> candi = new List<int>(vexnum);
+            for (int i = 0; i < vexnum; i++)
+            {
+                if (this.arcs[i, index].arcAdj == 1)
+                {
+                    noIncoming = false;
+                    candi.Add(i);
+                }
+            }
+
+            if (noIncoming)
+            {
+                lu.worseTime = this.vexs[index].pointComptime;
+                lu.utilization = lu.worseTime / this.vexs[index].pointPeriod;
+                lu.k_index = lu.minT_index = index;
+                
+                return lu;
+            }
+            else
+            {
+                LU minLU = new LU(0, 0);
+                LU tLU = new LU();
+
+                double tTime = 0;
+                double tU = 0;
+                for (int i = 0; i < candi.Count; i++)
+                {
+                    tTime = tk / (this.vexs[candi[i]].pointPeriod) * this.vexs[index].pointComptime + utilizationCompTime(candi[i], tk).worseTime;
+                    tU = utilizationCompTime(candi[i], tk).utilization + this.vexs[candi[i]].pointComptime / this.vexs[candi[i]].pointPeriod;
+                    tLU.worseTime = tTime;
+                    tLU.utilization = tU;
+                    tLU.k_index = index;
+                    tLU.minT_index = (this.vexs[candi[i]].pointPeriod > this.vexs[index].pointPeriod) ? index : candi[i];
+
+                    if (tLU.worseTime > minLU.worseTime)
+                    {
+                        minLU.worseTime = tLU.worseTime;
+                        minLU.utilization = tLU.utilization;
+                        minLU.minT_index = tLU.minT_index;
+                        minLU.k_index = tLU.k_index;
+                    }
+                }
+
+                return minLU;
+            }
+
+        }
+
+
+        /// <summary>
+        /// 给定点，检测是否需要进行动态优化，并进行频率的动态调整
+        /// </summary>
+        /// <param name="index"></param>
+        public void checkAndOpt_Dyn(int index)
+        {
+            LU lu = new LU();
+
+            //succ(i)
+            while(true)
+            {
+                lu = utilizationCompTime(index, this.vexs[index].pointPeriod);
+                double laxity = 1 - lu.worseTime / this.vexs[index].pointPeriod;
+
+                if (laxity >= lu.utilization || lu.k_index == lu.minT_index)
+                    break;
+
+                Console.WriteLine("laxity=" + laxity + " U=" + lu.utilization + " minT_index=" + lu.minT_index + 1 + " k_index=" + lu.k_index + 1);
+                Console.WriteLine("check for point " + (index + 1));
+                Console.WriteLine((lu.minT_index + 1) + "频率为" + this.vexs[lu.minT_index].pointPeriod + "动态调整加倍");
+                Console.ReadKey();
+                this.vexs[lu.minT_index].pointPeriod *= 2;
+                MGraphUpdate(lu.minT_index);
+            }
+        }
+
+        /// <summary>
+        /// 动态调整频率之后，需要更新arcs数组
+        /// </summary>
+        /// <param name="index"></param>
+        public void MGraphUpdate(int index)
+        {
+            int vexnum = this.mgraphVexnum;
+            for (int i = 0; i < vexnum; i++)
+            {
+                if (this.arcs[i, index].arcAdj == 1)
+                {
+                    int index_t = this.vexs[index].pointPeriod;
+                    int i_t = this.vexs[i].pointPeriod;
+                    if (index_t == i_t)
+                    {
+                        this.arcs[i, index].arcBuf = 3;
+                        this.arcs[index, i].arcBuf = 3;
+                    }
+                }
+            }
+        }
+
+
+
+
 
 
         /// <summary>
