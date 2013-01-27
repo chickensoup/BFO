@@ -759,6 +759,15 @@ namespace BFO
             }
         }
 
+        public void checkAndOpt_UtiDyn(int index)
+        {
+            LU lu = new LU();
+
+            lu = utilizationCompTime(index, this.vexs[index].pointPeriod);
+
+
+        }
+
         /// <summary>
         /// 动态调整频率之后，需要更新arcs数组
         /// </summary>
@@ -780,10 +789,6 @@ namespace BFO
                 }
             }
         }
-
-
-
-
 
 
         /// <summary>
@@ -1059,7 +1064,7 @@ namespace BFO
             {
                 double lateness = this.vexs[i].pointResopnsetime - this.vexs[i].pointPeriod;
                 if (Math.Abs(lateness) < 0.0001)
-                    lateness = 0;
+                    lateness = 0; 
 
 
                 if (lateness > 0)
